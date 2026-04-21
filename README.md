@@ -1,4 +1,4 @@
-# PES-VCS — Version Control System Implementation
+# PES-VCS — Custom Version Control System
 
 ### Name: Piyush G Nadgir
 
@@ -6,109 +6,144 @@
 
 ---
 
-## Project Overview
+## Introduction
 
-This project is a custom Version Control System (VCS) built from scratch in C, modeled after the internal architecture of Git. It implements content-addressable storage, directory tree snapshots, a staging area (index), and a persistent commit history.
-
----
-
-## Architecture & OS Concepts
-
-* Content-addressable storage using SHA-256 hashes
-* Atomic writes using temp-file-then-rename pattern
-* Directory sharding in `.pes/objects/`
-* Metadata tracking using `stat` (mtime and size)
+This project implements a lightweight Version Control System in C, inspired by Git’s internal design. The system focuses on efficient storage of file data, tracking changes over time, and maintaining a structured commit history. Instead of relying on filenames, it uses content-based identification to manage data.
 
 ---
 
-## Phases of Development & Evidence
+## Core Design Concepts
 
-### Phase 1: Object Storage
+* **Content-Based Storage:**
+  Each file is stored using its SHA-256 hash, ensuring identical content is saved only once.
 
-**Screenshot 1A (Tests)**
-![1A](screenshots/1A_test_objects.png)
+* **Safe File Updates:**
+  File writes follow a temporary file → rename approach to prevent corruption during failures.
 
-**Screenshot 1B (Sharding)**
-![1B](screenshots/1B_find_objects.png)
+* **Optimized Object Storage:**
+  Objects are distributed across subdirectories to reduce lookup overhead.
 
----
-
-### Phase 2: Tree Objects
-
-**Screenshot 2A (Tests)**
-![2A](screenshots/2A_test_tree.png)
-
-**Screenshot 2B (Binary View)**
-![2B](screenshots/2B_xxd_tree.png)
+* **Change Detection:**
+  File metadata such as modification time and size is used to quickly detect updates.
 
 ---
 
-### Phase 3: The Index (Staging Area)
+## Implementation Stages and Outputs
 
-**Screenshot 3A (Status)**
-![3A](screenshots/3A_pes_status.png)
+### Stage 1: Object Storage
 
-**Screenshot 3B (Index File)**
-![3B](screenshots/3B_cat_index.png)
+**Test Execution Output**
+![1A](Output_screenshot/1A_test_objects.png)
 
----
+This verifies correct creation of blob objects and ensures duplicate content is not stored multiple times.
 
-### Phase 4: Commits and History
+**Object Directory Layout**
+![1B](Output_screenshot/1B_find_objects.png)
 
-**Screenshot 4A (Commit Log - View 1)**
-![4A-1](screenshots/4A_pes_log.png)
-
-**Screenshot 4A (Commit Log - View 2)**
-![4A-2](screenshots/4A_pes_log_2_.png)
-
-**Screenshot 4B (Object Growth)**
-![4B](screenshots/4B_find_pes.png)
-
-**Screenshot 4C (References)**
-![4C](screenshots/4C_head_refs.png)
-
-**Screenshot 4 Test (Integration)**
-![4test](screenshots/final_integration.png)
-
-**Additional Integration Views**
-![extra1](screenshots/final_integration_2_.png)
-![extra2](screenshots/final_integration_3_.png)
+Shows how objects are distributed across directories for efficient access.
 
 ---
 
-## Analysis Questions
+### Stage 2: Tree Representation
 
-### Section 5: Branching and Checkout
+**Tree Construction Validation**
+![2A](Output_screenshot/2A_test_tree.png)
 
-**Q5.1 Implementation of checkout**
-Update the HEAD file to point to the new branch reference. Then update the working directory by reading the Tree object of the target commit. This involves safely removing, adding, and modifying files without losing uncommitted changes.
+Confirms correct building and parsing of hierarchical directory structures.
 
-**Q5.2 Dirty Directory Detection**
-Compare current file metadata (`mtime`, `size`) with index entries. If mismatched, mark as dirty. Also compare index hashes with the target commit’s Tree object.
+**Binary Format Inspection**
+![2B](Output_screenshot/2B_xxd_tree.png)
 
-**Q5.3 Detached HEAD**
-Commits created in detached HEAD are not referenced by any branch. They remain in the object store and can be recovered by manually creating a branch pointing to the commit hash.
-
----
-
-### Section 6: Garbage Collection
-
-**Q6.1 Reachability Algorithm**
-Use Mark-and-Sweep:
-
-* Mark all objects reachable from HEAD and refs
-* Delete all unmarked objects
-
-**Q6.2 Race Conditions in GC**
-GC may delete objects created during an ongoing commit. This can be avoided using a grace period or protecting recently created objects.
+Displays the internal binary layout of tree objects using a hex dump.
 
 ---
 
-## How to Run
+### Stage 3: Index (Staging Mechanism)
+
+**Status Command Output**
+![3A](Output_screenshot/3A_pes_status.png)
+
+Demonstrates how staged files are tracked before committing.
+
+**Index File Contents**
+![3B](Output_screenshot/3B_cat_index.png)
+
+Shows stored metadata and object references inside the index file.
+
+---
+
+### Stage 4: Commit Handling and History
+
+**Commit Log Output (View 1)**
+![4A-1](Output_screenshot/4A_pes_log.png)
+
+**Commit Log Output (View 2)**
+![4A-2](Output_screenshot/4A_pes_log_2_.PNG)
+
+These outputs confirm that commits are linked correctly, forming a history chain.
+
+**Object Store Growth**
+![4B](Output_screenshot/4B_find_pes.png)
+
+Illustrates how new commits increase stored objects.
+
+**HEAD Reference Tracking**
+![4C](Output_screenshot/4C_head_refs.png)
+
+Shows how the latest commit is referenced.
+
+**Integration Testing Output**
+![4test](Output_screenshot/final_integration.png)
+
+Additional views:
+![extra1](Output_screenshot/final_integration_2_.PNG)
+![extra2](Output_screenshot/final_integration_3_.PNG)
+
+---
+
+## Conceptual Questions
+
+### Branch Switching (Checkout)
+
+To switch branches, the system updates the HEAD reference to point to the selected branch. The working directory is then synchronized with the corresponding commit’s tree structure. Care must be taken to avoid overwriting uncommitted changes, which requires comparing current files with the target state.
+
+---
+
+### Detecting Uncommitted Changes
+
+The system compares file metadata (modification time and size) with stored index entries. Any mismatch indicates that the working directory has been modified. Additionally, comparing hashes with the target commit helps identify differences.
+
+---
+
+### Detached HEAD State
+
+When operating in a detached HEAD state, commits are created without updating any branch pointer. These commits still exist in the object store and can be recovered by referencing their hash.
+
+---
+
+## Garbage Collection Strategy
+
+### Reachability Analysis
+
+A mark-and-sweep approach is used:
+
+* Start from HEAD and branch references
+* Recursively mark all reachable objects
+* Remove any unreferenced objects
+
+---
+
+### Concurrency Concerns
+
+If garbage collection runs while new objects are being created, there is a risk of deleting valid but unreferenced data. This can be mitigated by delaying deletion of recently created objects.
+
+---
+
+## Execution Instructions
 
 ```bash
 make pes
 ./pes init
 ./pes add <filename>
-./pes commit -m "Your message"
+./pes commit -m "commit message"
 ```
